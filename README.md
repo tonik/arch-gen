@@ -4,7 +4,7 @@ This is a small tool that generates an ARCHITECTURE file with mono repo diagrams
 
 ## Requirements
 
-- **pnpm**: A fast, disk space-efficient package manager
+- **pnpm**
 - **Monorepo**: A repository that contains multiple projects
 
 ## Basic Usage
