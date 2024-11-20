@@ -192,15 +192,14 @@ Use following template:
   }
 }
 
-export function generateFolderTree(
-  projects: Awaited<WorkspaceProjects>,
-): string {
-  type Node = {
-    inner: Node[] | undefined;
-    name: string;
-    projectName?: string;
-    root: boolean;
-  };
+type Node = {
+  inner: Node[] | undefined;
+  name: string;
+  projectName?: string;
+  root: boolean;
+};
+
+function createNodeTree(projects: WorkspaceProjects) {
   const tree: Node[] = [];
 
   for (const project of projects) {
@@ -231,13 +230,16 @@ export function generateFolderTree(
     }
   }
 
+  return tree;
+}
+
+export function generateFolderTree(tree: Node[]): string {
   function renderTree(nodes: Node[], prefix = ""): string {
     let result = "";
 
     let index = 0;
     const lastIndex = nodes.length - 1;
     for (const node of nodes) {
-
       const isLastItem = index === lastIndex;
 
       const connector = isLastItem ? "└── " : "├── ";
@@ -245,12 +247,11 @@ export function generateFolderTree(
       if (node.root) {
         result += `${prefix}${node.projectName ?? "(root)"}\n`;
       } else {
-
         result += `${prefix}${connector}${node.name}\n`;
       }
 
       if (node.inner && node.inner.length > 0) {
-        const childPrefix = isLastItem ? node.root ? "" : "    " : "│   ";
+        const childPrefix = isLastItem ? (node.root ? "" : "    ") : "│   ";
         result += `${renderTree(node.inner, prefix + childPrefix)}`;
       }
 
@@ -263,28 +264,73 @@ export function generateFolderTree(
   return "```\n" + renderTree(tree) + "```";
 }
 
-function generateDependencyGraph(projects: Awaited<WorkspaceProjects>): string {
+function sanitizeMermaid(s: string): string {
+  return s.replace(/[@/-]/g, "_");
+}
+
+function generateDependencyGraph(projects: WorkspaceProjects): string {
   let mermaidGraph = "graph TD\n";
 
-  // Add nodes
-  projects.forEach((project) => {
-    const sanitizedName = project.name.replace(/[@/-]/g, "_");
-    mermaidGraph += `  ${sanitizedName}["${project.name}"]\n`;
-  });
+  const subgraphs: Record<string, WorkspaceProjects> = {};
+  // Group per first level directory
+  for (const project of projects) {
+    const subgraph = project.path.split("/")[0];
 
-  // Add dependencies
-  projects.forEach((project) => {
-    const sanitizedSource = project.name.replace(/[@/-]/g, "_");
+    if (subgraph === "") {
+      continue;
+    }
 
-    // Only include dependencies that are part of the workspace
-    const workspaceDeps = project.dependencies.filter((dep) =>
-      projects.some((p) => p.name === dep),
-    );
+    if (!subgraphs[subgraph]) {
+      subgraphs[subgraph] = [];
+    }
+    subgraphs[subgraph].push(project);
+  }
 
-    workspaceDeps.forEach((dep) => {
-      const sanitizedTarget = dep.replace(/[@/-]/g, "_");
-      mermaidGraph += `  ${sanitizedSource} --> ${sanitizedTarget}\n`;
+  for (const [subgraph, sProjects] of Object.entries(subgraphs)) {
+    mermaidGraph += `  subgraph ${subgraph}\n`;
+    sProjects.forEach((project) => {
+      const sanitizedName = sanitizeMermaid(project.name);
+      mermaidGraph += `     ${sanitizedName}["${project.name}"]\n`;
     });
+    mermaidGraph += `  end\n`;
+  }
+
+  const subgraphDependencies = new Map<string, Set<string>>();
+
+  // subgraph dependencies
+  for (const project of projects) {
+    if (project.path === "") {
+      continue;
+    }
+
+    const currentSubgraph = project.path.split("/")[0];
+
+    const currentSet = subgraphDependencies.get(currentSubgraph) ?? new Set();
+
+    const allSubgraphDependencies = project.dependencies
+      .concat(project.devDependencies)
+      .map((dep) => {
+        const depProject = projects.find((p) => p.name === dep);
+        if (!depProject) {
+          return "";
+        }
+        return depProject.path.split("/")[0];
+      });
+
+    for (const dep of allSubgraphDependencies) {
+      currentSet.add(dep);
+    }
+
+    subgraphDependencies.set(currentSubgraph, currentSet);
+  }
+
+  subgraphDependencies.forEach((dependencies, subgraph) => {
+    const deps = [...dependencies]
+      .filter((x) => x && x !== subgraph)
+      .join(" & ")
+      .trim();
+
+    if (deps !== "") mermaidGraph += `  ${subgraph} --> ${deps}\n`;
   });
 
   return "```mermaid\n" + mermaidGraph + "```";
@@ -348,7 +394,8 @@ async function generateArchitectureDoc(
     stack = await generateTechStackWithAI(aiSettings.model, projects);
   }
 
-  const tree = generateFolderTree(projects);
+  const nodes = createNodeTree(projects);
+  const tree = generateFolderTree(nodes);
   const graph = generateDependencyGraph(projects);
 
   const compiledTemplate = Handlebars.compile(template);
