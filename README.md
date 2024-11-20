@@ -10,5 +10,5 @@ Tool to generate ARCHITECTURE file with mono repo diagrams with single command
 ## Usage
 
 ```bash
-npx arch-gen
+npx @tonik/arch-gen
 ```
