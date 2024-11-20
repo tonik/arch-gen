@@ -82,7 +82,9 @@ async function getPnpmWorkspaceProjects(rootPath: string) {
         namespacePrefix,
         path: path.relative(rootPath, pkg.path),
         dependencies: Object.keys(parsedPackageJson.data.dependencies || {}),
-        devDependencies: Object.keys(parsedPackageJson.data.devDependencies || {}),
+        devDependencies: Object.keys(
+          parsedPackageJson.data.devDependencies || {},
+        ),
         description: parsedPackageJson.data.description,
       };
     });
@@ -170,7 +172,6 @@ External packages:
     .slice(0, 500)
     .join("\n")}
 `;
-    console.log("Prompt:", prompt);
     const { text } = await generateText({
       model,
       system: `You are a technical writer who specializes in creating concise project descriptions.
@@ -191,34 +192,70 @@ Use following template:
   }
 }
 
-function generateFolderTree(projects: Awaited<WorkspaceProjects>): string {
-  const tree: { [key: string]: any } = {};
+export function generateFolderTree(
+  projects: Awaited<WorkspaceProjects>,
+): string {
+  type Node = {
+    inner: Node[] | undefined;
+    name: string;
+    projectName?: string;
+    root: boolean;
+  };
+  const tree: Node[] = [];
 
-  projects.forEach((project) => {
+  for (const project of projects) {
     const parts = project.path.split("/");
-    let current = tree;
-    parts.forEach((part, index) => {
-      if (!current[part]) {
-        current[part] = index === parts.length - 1 ? null : {};
-      }
-      current = current[part];
-    });
-  });
+    let current = tree.length > 0 ? (tree[0].inner ?? []) : tree;
+    let leaf: Node | null = null;
 
-  function renderTree(node: any, prefix = "", isLast = true): string {
-    const entries = Object.entries(node || {});
+    for (const part of parts) {
+      const existingNode = current.find((c) => c.name === part);
+      if (existingNode) {
+        if (!existingNode.inner) {
+          existingNode.inner = [];
+        }
+        current = existingNode.inner;
+        continue;
+      }
+
+      const newNode = { name: part, inner: [], root: project.path === "" };
+
+      current.push(newNode);
+
+      current = newNode.inner;
+      leaf = newNode;
+    }
+
+    if (leaf) {
+      leaf.projectName = project.name;
+    }
+  }
+
+  function renderTree(nodes: Node[], prefix = ""): string {
     let result = "";
 
-    entries.forEach(([key, value], index) => {
-      const isLastItem = index === entries.length - 1;
-      const connector = isLast ? "└── " : "├── ";
-      const childPrefix = isLast ? "    " : "│   ";
+    let index = 0;
+    const lastIndex = nodes.length - 1;
+    for (const node of nodes) {
 
-      result += `${prefix}${connector}${key}\n`;
-      if (value !== null) {
-        result += renderTree(value, prefix + childPrefix, isLastItem);
+      const isLastItem = index === lastIndex;
+
+      const connector = isLastItem ? "└── " : "├── ";
+
+      if (node.root) {
+        result += `${prefix}${node.projectName ?? "(root)"}\n`;
+      } else {
+
+        result += `${prefix}${connector}${node.name}\n`;
       }
-    });
+
+      if (node.inner && node.inner.length > 0) {
+        const childPrefix = isLastItem ? node.root ? "" : "    " : "│   ";
+        result += `${renderTree(node.inner, prefix + childPrefix)}`;
+      }
+
+      index++;
+    }
 
     return result;
   }
@@ -253,7 +290,7 @@ function generateDependencyGraph(projects: Awaited<WorkspaceProjects>): string {
   return "```mermaid\n" + mermaidGraph + "```";
 }
 
-const template = `#{{{ name }}} Architecture
+const template = `# {{{ name }}} Architecture
 
 {{{ description }}}
 
@@ -315,7 +352,7 @@ async function generateArchitectureDoc(
   const graph = generateDependencyGraph(projects);
 
   const compiledTemplate = Handlebars.compile(template);
-  let doc = compiledTemplate({
+  const doc = compiledTemplate({
     name: rootPackageJson.name,
     description,
     stack,
