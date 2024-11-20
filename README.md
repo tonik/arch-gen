@@ -1,6 +1,6 @@
 # Arch Gen
 
-Arch Gen is a tool designed to generate an ARCHITECTURE file with monorepo diagrams using a single command. It leverages `mermaid` for diagram generation and can optionally use the `OpenAI API` for descriptions.
+This is a small tool that generates an ARCHITECTURE file with mono repo diagrams using a single command. It produces `mermaid` diagrams and can optionally enhance descriptions using the `OpenAI API`.
 
 ## Requirements
 
@@ -17,13 +17,13 @@ npx @tonik/arch-gen [options]
 
 ### Options
 
-- `--ai [openai-api-key]`: Use this option to generate descriptions and tech stack information with the OpenAI API. If not provided, it will read from the `OPENAI_API_KEY` environment variable.
+- `--ai [openai-api-key]`: This option generates descriptions and tech stack information with the OpenAI API. If not provided, it will read from the `OPENAI_API_KEY` environment variable.
 
-**Disclaimer**: When using the AI option, certain data is sent to the OpenAI API for processing. No code files are transmitted. The data includes:
-- Directory names
-- Monorepo file layout with external and internal package names
-- Contents of `package.json`
-- Contents of README files
+> **Disclaimer**: When using the AI option, certain data is sent to the OpenAI API for processing. No code files are transmitted. The data includes:
+> - Directory names
+> - Monorepo file layout with external and internal package names
+> - Contents of `package.json`
+> - Contents of README files
 
 - `-r, --root <path>`: Specify the root path of the monorepo.
 - `-y, --yes`: Skip prompts and generate diagrams with default options.
